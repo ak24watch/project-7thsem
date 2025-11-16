@@ -6,6 +6,7 @@ from dataLoader.make_data import prepare_dataloader
 from model_dir.Cno_2d_model import CNO_2D, ActivationFilter
 from functools import partial
 from tqdm import tqdm
+# jax.config.update("jax_platform_name", "cpu")
 
 import finitediffx as fdx
 
@@ -32,29 +33,30 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     loss_imag = jnp.mean((ET_output_imag.ravel() - ET_target_imag.ravel()) ** 2)
     data_loss = loss_real + loss_imag
 
-    # physics loss
-    EI_real = inputs[..., 2]
-    EI_imag = inputs[..., 3]
+    # # physics loss
+    # EI_real = inputs[..., 2]
+    # EI_imag = inputs[..., 3]
 
-    ER = inputs[..., 0] + 1j * inputs[..., 1]
-    ES_real = ET_output_real - EI_real
-    ES_imag = ET_output_imag - EI_imag
-    lap_fn = partial(fdx.laplacian, step_size=(dx, dy), accuracy=fdx_accuracy)
+    # ER = inputs[..., 0] + 1j * inputs[..., 1]
+    # ES_real = ET_output_real - EI_real
+    # ES_imag = ET_output_imag - EI_imag
+    # lap_fn = partial(fdx.laplacian, step_size=(dx, dy), accuracy=fdx_accuracy)
 
-    laplacian_ES_real = jax.vmap(lap_fn, in_axes=0)(ES_real)
-    laplacian_ES_imag = jax.vmap(lap_fn, in_axes=0)(ES_imag)
+    # laplacian_ES_real = jax.vmap(lap_fn, in_axes=0)(ES_real)
+    # laplacian_ES_imag = jax.vmap(lap_fn, in_axes=0)(ES_imag)
    
-    laplacian_ES = laplacian_ES_real + 1j * laplacian_ES_imag
+    # laplacian_ES = laplacian_ES_real + 1j * laplacian_ES_imag
 
-    ES = ES_real + 1j * ES_imag
-    ET = ET_output_real + 1j * ET_output_imag
+    # ES = ES_real + 1j * ES_imag
+    # ET = ET_output_real + 1j * ET_output_imag
 
-    physics_residual = laplacian_ES + k0**2 * ES + k0**2 * (ER - 1) * ET
-    physics_loss = jnp.mean(jnp.abs(physics_residual.ravel()) ** 2)
+    # physics_residual = laplacian_ES + k0**2 * ES + k0**2 * (ER - 1) * ET
+    # physics_loss = jnp.mean(jnp.abs(physics_residual.ravel()) ** 2)
 
-    total_loss = data_loss + config["physics_loss_weight"] * physics_loss
+    # total_loss = data_loss + config["physics_loss_weight"] * physics_loss
 
-    return total_loss
+    # return total_loss
+    return data_loss
 
 
 @nnx.jit(static_argnames=["dx", "dy", "fdx_accuracy", "k0"])
@@ -141,7 +143,7 @@ if __name__ == "__main__":
     print("delta is ", wavelength / 20)
     config = {
         "data_folder": "dataset/",
-        "batch_size": 88,
+        "batch_size": 16,
         "K0": 2 * jnp.pi / wavelength,
         "dx": wavelength / 20,
         "dy": wavelength / 20,
@@ -171,5 +173,6 @@ if __name__ == "__main__":
         "random_seed": 42,
         "kernel_size": 3,
     }
+   
 
     train_cno_model(config)
