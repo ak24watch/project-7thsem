@@ -33,6 +33,13 @@ def load_full_dataset(folder):
         er = np.load(os.path.join(folder, er_files[i]))
         et = np.load(os.path.join(folder, et_files[i]))
 
+
+        # Check for NaN or Inf values in loaded arrays
+        if np.isnan(er).any() or np.isinf(er).any():
+            print(f"Warning: er_{i}.npy contains NaN or Inf values!")
+        if np.isnan(et).any() or np.isinf(et).any():
+            print(f"Warning: Et_{i}.npy contains NaN or Inf values!")
+
         ER_list.append(er)
         ET_list.append(et)
 
@@ -44,13 +51,25 @@ def load_full_dataset(folder):
     # print("ER shape:", ER.shape)
     # print("ET shape:", ET.shape)
 
+    # Check for NaNs or Infs in ER and ET
+    if jnp.isnan(ER).any() or jnp.isinf(ER).any():
+        print("Warning: ER contains NaN or Inf values!")
+    # if jnp.isnan(ET).any() or jnp.isinf(ET).any():
+    #     print("Warning: ET contains NaN or Inf values!")
+
     return ER, ET
 
 
 def create_dataloader(ER, ET, batch_size, shuffle=True):
     N = ER.shape[0]
+    print("shape of ER:", ER.shape)
     ER = ER.reshape(N, 88, 88)
     ET = ET.reshape(N, 88, 88)
+    # Check for NaNs or Infs in ER and ET
+    if jnp.isnan(ER).any() or jnp.isinf(ER).any():
+        print("Warning: ER contains NaN or Inf values!")
+    # if jnp.isnan(ET).any() or jnp.isinf(ET).any():
+    #     print("Warning: ET contains NaN or Inf values!")
 
     def dataloader():
         idx = np.arange(N)
@@ -150,7 +169,7 @@ if __name__ == "__main__":
 
     loader = create_dataloader(ER, ET, batch_size=32)
 
-    fb_ER, fb_ET = next(iter(loader()))  # Example of getting the first batch
+    # fb_ER, fb_ET = next(iter(loader()))  # Example of getting the first batch
 
-    # Plot one sample from ER and ET (first sample in batch)
-    plot_sample(fb_ER, fb_ET, sample_idx=0)
+    # # Plot one sample from ER and ET (first sample in batch)
+    # plot_sample(fb_ER, fb_ET, sample_idx=0)
