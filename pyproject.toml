@@ -11,6 +11,7 @@ dependencies = [
     "matplotlib>=3.10.7",
     "optax>=0.2.6",
     "plotly>=6.4.0",
+    "tqdm>=4.67.1",
 ]
 
 [dependency-groups]
