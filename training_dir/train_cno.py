@@ -88,7 +88,7 @@ def train_cno_model(config):
         decoder_out_channels=config["decoder_out_channels"],
         decoder_in_size=config["decoder_in_size"],
         decoder_out_size=config["decoder_out_size"],
-        lp_latent_dim=config["lp_latent_dim"],
+        lp_latent_channels=config["lp_latent_channels"],
         lp_in_channels=config["lp_in_channels"],
         lp_out_channels=config["lp_out_channels"],
         lp_in_size=config["lp_in_size"],
@@ -97,6 +97,7 @@ def train_cno_model(config):
         use_bn=config["use_bn"],
         num_residual_blocks=config["num_residual_blocks"],
         rngs=rngs,
+        kernel_size=config["kernel_size"],
     )
 
     # create optimizer
@@ -136,14 +137,14 @@ if __name__ == "__main__":
     c0 = 3e8  # Speed of light in m/s
     wavelength = c0 / frequency  # Wavelength in meters
     print("wavelength is", wavelength)
-    print("delta is ", wavelength / 30)
+    print("delta is ", wavelength / 20)
     config = {
         "data_folder": "dataset/",
         "batch_size": 88,
         "K0": 2 * jnp.pi / wavelength,
-        "dx": wavelength / 30,
-        "dy": wavelength / 30,
-        "fdx_accuracy": 2,
+        "dx": wavelength / 20,
+        "dy": wavelength / 20,
+        "fdx_accuracy": 10,
         "physics_loss_weight": 0.3,
         "encoder_in_channels": [32, 64, 128],
         "encoder_out_channels": [64, 128, 256],
@@ -153,17 +154,21 @@ if __name__ == "__main__":
         "decoder_out_channels": [128, 64, 32],
         "decoder_in_size": [11, 22, 44],
         "decoder_out_size": [22, 44, 88],
-        "lp_latent_channels": [16, 16], # comes in b/w lp_in_channels and lp_out_channels
-        "lp_in_channels": [6, 32], # may be 8 in_channels  for lift if added something
+        "lp_latent_channels": [
+            16,
+            16,
+        ],  # comes in b/w lp_in_channels and lp_out_channels
+        "lp_in_channels": [6, 32],  # may be 8 in_channels  for lift if added something
         "lp_out_channels": [32, 2],
-        "lp_in_size": [88, 88], # change lp
-        "lp_out_size": [88, 88],# change lp_out_size of lift to 176  afterwards
+        "lp_in_size": [88, 88],  # change lp
+        "lp_out_size": [88, 88],  # change lp_out_size of lift to 176  afterwards
         "activation": nnx.leaky_relu,
         "use_bn": True,
         "num_residual_blocks": 4,
         "learning_rate": 1e-3,
         "num_epochs": 100,
         "random_seed": 42,
+        "kernel_size": 3,
     }
 
     train_cno_model(config)

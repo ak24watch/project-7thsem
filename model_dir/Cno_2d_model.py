@@ -23,15 +23,15 @@ class CNO_2D(nnx.Module):
         decoder_out_channels: Sequence[int],
         decoder_in_size: Sequence[int],
         decoder_out_size: Sequence[int],
-        lp_latent_dim: Sequence[int],
+        lp_latent_channels: Sequence[int],
         lp_in_channels: Sequence[int],
         lp_out_channels: Sequence[int],
         lp_in_size: Sequence[int],
         lp_out_size: Sequence[int],
-        activation: nnx.leaky_relu, # <-- here is the mistake ,as this a class not function
-        use_bn=True,
+        activation,  # class not function
+        use_bn,
+        rngs,
         num_residual_blocks=4,
-        rngs: nnx.Rngs = None,
         kernel_size=3,
     ):
         self.encoder_list = []
@@ -82,27 +82,28 @@ class CNO_2D(nnx.Module):
 
         self.lift = LiftProjectBlock(
             in_channels=lp_in_channels[0],
-            latent_dim=lp_latent_dim[0],
+            latent_channels=lp_latent_channels[0],
             out_channels=lp_out_channels[0],
             in_size=lp_in_size[0],
             out_size=lp_out_channels[0],
             rngs=rngs,
+            use_bn=use_bn,
             kernel_size=kernel_size,
             activation=activation,
         )
 
         self.project = LiftProjectBlock(
             in_channels=lp_out_channels[-1],
-            latent_dim=lp_latent_dim[-1],
+            latent_channels=lp_latent_channels[-1],
             out_channels=lp_out_channels[-1],
             in_size=lp_in_size[-1],
             out_size=lp_out_size[-1],
             rngs=rngs,
+            use_bn=use_bn,
             kernel_size=kernel_size,
             activation=activation,
         )
 
-   
     def __call__(self, x):
         # lift
         x = self.lift(x)
@@ -161,16 +162,17 @@ if __name__ == "__main__":
         decoder_out_channels=decoder_out_channels,
         decoder_in_size=decoder_in_size,
         decoder_out_size=decoder_out_size,
-        lp_latent_dim=lp_latent_dim,
+        lp_latent_channels=lp_latent_dim,
         lp_in_channels=lp_in_channels,
         lp_out_channels=lp_out_channels,
         lp_in_size=lp_in_size,
         lp_out_size=lp_out_size,
         activation=ActivationFilter,
         use_bn=True,
-        num_residual_blocks=4,
+        num_residual_blocks=2,
         rngs=rngs,
     )
+
     end_time = time.time()
     print("Model created in:", end_time - start_time, "seconds")
 
