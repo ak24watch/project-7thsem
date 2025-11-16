@@ -102,7 +102,7 @@ class CNO_2D(nnx.Module):
             activation=activation,
         )
 
-    @nnx.jit  # conv net weights initlization change after first run
+   
     def __call__(self, x):
         # lift
         x = self.lift(x)

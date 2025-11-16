@@ -11,7 +11,7 @@ from tqdm import tqdm
 import finitediffx as fdx
 
 
-def preprocess_batch(ER, EI, k0,  ET):
+def preprocess_batch(ER, EI, k0, ET):
     print("EI shape is", EI.shape)
     print("ER shape is", ER.shape)
     print("ET shape is", ET.shape)
@@ -23,7 +23,7 @@ def preprocess_batch(ER, EI, k0,  ET):
     return input_batch, output_batch
 
 
-def compute_loss(cno_model, targets, inputs, config):
+def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     predicted = cno_model(inputs)
     ET_target_real = targets[..., 0]
     ET_target_imag = targets[..., 1]
@@ -41,19 +41,15 @@ def compute_loss(cno_model, targets, inputs, config):
     ES_real = ET_output_real - EI_real
     ES_imag = ET_output_imag - EI_imag
 
-    laplcian_ES_real = fdx.laplacian(
-        ES_real, step_size=(config["dx"], config["dy"]), accuracy=config["fdx_accuracy"]
-    )
-    laplcian_ES_imag = fdx.laplacian(
-        ES_imag, step_size=(config["dx"], config["dy"]), accuracy=config["fdx_accuracy"]
-    )
+    laplcian_ES_real = fdx.laplacian(ES_real, step_size=(dx, dy), accuracy=fdx_accuracy)
+    laplcian_ES_imag = fdx.laplacian(ES_imag, step_size=(dx, dy), accuracy=fdx_accuracy)
 
     laplacian_ES = laplcian_ES_real + 1j * laplcian_ES_imag
 
     ES = ES_real + 1j * ES_imag
     ET = ET_output_real + 1j * ET_output_imag
 
-    physics_residual = laplacian_ES + config.k0**2 * ES + config.k0**2 * (ER - 1) * ET
+    physics_residual = laplacian_ES + k0**2 * ES + k0**2 * (ER - 1) * ET
     physics_loss = jnp.mean(jnp.abs(physics_residual.ravel()) ** 2)
 
     total_loss = data_loss + config["physics_loss_weight"] * physics_loss
@@ -62,8 +58,16 @@ def compute_loss(cno_model, targets, inputs, config):
 
 
 @nnx.jit
-def update_cno(cno_model, inputs, targets, config, optimizer):
-    loss, grads = nnx.value_and_grad(compute_loss)(cno_model, targets, inputs, config)
+def update_cno(cno_model, inputs, targets, dx, dy, fdx_accuracy, k0, optimizer):
+    loss, grads = nnx.value_and_grad(compute_loss)(
+        cno_model,
+        targets,
+        inputs,
+        dx=dx,
+        dy=dy,
+        fdx_accuracy=fdx_accuracy,
+        k0=k0,
+    )
     optimizer.update(cno_model, grads)
     return loss
 
@@ -73,8 +77,6 @@ def train_cno_model(config):
     data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
     EI = jnp.load("e_forward.npy")
     EI = EI.reshape(88, 88)
-    
-    
 
     # create model
     rngs = nnx.Rngs(config["random_seed"])
@@ -107,8 +109,19 @@ def train_cno_model(config):
         batch_count = 0
 
         for ER, ET in data_loader():
-            inputs, targets = nnx.vmap(preprocess_batch, in_axes=(0, None, None, 0))(ER, EI, config["K0"], ET)
-            loss = update_cno(model, inputs, targets, config, optimizer)
+            inputs, targets = nnx.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
+                ER, EI, config["K0"], ET
+            )
+            loss = update_cno(
+                model,
+                inputs,
+                targets,
+                config["dx"],
+                config["dy"],
+                config["fdx_accuracy"],
+                config["K0"],
+                optimizer,
+            )
             epoch_loss += float(loss)
             batch_count += 1
 
@@ -136,7 +149,6 @@ if __name__ == "__main__":
         "decoder_out_channels": [128, 64, 32, 2],
         "decoder_in_size": [11, 22, 44, 88],
         "decoder_out_size": [22, 44, 88, 88],
-
         "lp_latent_dim": [256, 256],
         "lp_in_channels": [6, 2],
         "lp_out_channels": [32, 2],
