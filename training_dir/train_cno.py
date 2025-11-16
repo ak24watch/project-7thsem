@@ -3,9 +3,8 @@ import optax
 import jax.numpy as jnp
 import flax.nnx as nnx
 from dataLoader.make_data import prepare_dataloader
-from model_dir.Cno_2d_model import CNO_2D
-import equinox as eqx
-
+from model_dir.Cno_2d_model import CNO_2D, ActivationFilter
+from functools import partial
 from tqdm import tqdm
 
 import finitediffx as fdx
@@ -94,7 +93,7 @@ def train_cno_model(config):
         lp_out_channels=config["lp_out_channels"],
         lp_in_size=config["lp_in_size"],
         lp_out_size=config["lp_out_size"],
-        activation=config["activation"],
+        activation=partial(ActivationFilter, activation=config["activation"]),
         use_bn=config["use_bn"],
         num_residual_blocks=config["num_residual_blocks"],
         rngs=rngs,
@@ -133,27 +132,32 @@ def train_cno_model(config):
 
 if __name__ == "__main__":
     # Example configuration
+    frequency = 400e6  # 400 MHz
+    c0 = 3e8  # Speed of light in m/s
+    wavelength = c0 / frequency  # Wavelength in meters
+    print("wavelength is", wavelength)
+    print("delta is ", wavelength / 30)
     config = {
         "data_folder": "dataset/",
         "batch_size": 88,
-        "K0": 2 * jnp.pi / 0.3,
-        "dx": 0.0375,
-        "dy": 0.0375,
+        "K0": 2 * jnp.pi / wavelength,
+        "dx": wavelength / 30,
+        "dy": wavelength / 30,
         "fdx_accuracy": 2,
         "physics_loss_weight": 0.3,
         "encoder_in_channels": [32, 64, 128],
         "encoder_out_channels": [64, 128, 256],
         "encoder_in_size": [88, 44, 22],
         "encoder_out_size": [44, 22, 11],
-        "decoder_in_channels": [256, 128, 64, 32],
-        "decoder_out_channels": [128, 64, 32, 2],
-        "decoder_in_size": [11, 22, 44, 88],
-        "decoder_out_size": [22, 44, 88, 88],
-        "lp_latent_dim": [256, 256],
-        "lp_in_channels": [6, 2],
+        "decoder_in_channels": [256, 128, 64],
+        "decoder_out_channels": [128, 64, 32],
+        "decoder_in_size": [11, 22, 44],
+        "decoder_out_size": [22, 44, 88],
+        "lp_latent_channels": [16, 16], # comes in b/w lp_in_channels and lp_out_channels
+        "lp_in_channels": [6, 32], # may be 8 in_channels  for lift if added something
         "lp_out_channels": [32, 2],
-        "lp_in_size": [88, 88],
-        "lp_out_size": [88, 88],
+        "lp_in_size": [88, 88], # change lp
+        "lp_out_size": [88, 88],# change lp_out_size of lift to 176  afterwards
         "activation": nnx.leaky_relu,
         "use_bn": True,
         "num_residual_blocks": 4,

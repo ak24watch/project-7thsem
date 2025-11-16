@@ -28,7 +28,7 @@ class CNO_2D(nnx.Module):
         lp_out_channels: Sequence[int],
         lp_in_size: Sequence[int],
         lp_out_size: Sequence[int],
-        activation: nnx.leaky_relu,
+        activation: nnx.leaky_relu, # <-- here is the mistake ,as this a class not function
         use_bn=True,
         num_residual_blocks=4,
         rngs: nnx.Rngs = None,
