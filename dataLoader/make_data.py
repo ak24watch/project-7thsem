@@ -49,6 +49,8 @@ def load_full_dataset(folder):
 
 def create_dataloader(ER, ET, batch_size, shuffle=True):
     N = ER.shape[0]
+    ER = ER.reshape(N, 88, 88)
+    ET = ET.reshape(N, 88, 88)
 
     def dataloader():
         idx = np.arange(N)

@@ -1,19 +1,21 @@
 import optax
-import jax
+
 import jax.numpy as jnp
 import flax.nnx as nnx
 from dataLoader.make_data import prepare_dataloader
 from model_dir.Cno_2d_model import CNO_2D
-import plotly.graph_objects as go
+import equinox as eqx
 
 from tqdm import tqdm
 
 import finitediffx as fdx
 
 
-@nnx.jit
-def preprocess_batch(ER, EI, config, ET):
-    K_ = config["K0"] * jnp.sqrt(ER)
+def preprocess_batch(ER, EI, k0,  ET):
+    print("EI shape is", EI.shape)
+    print("ER shape is", ER.shape)
+    print("ET shape is", ET.shape)
+    K_ = k0 * jnp.sqrt(ER)
     input_batch = jnp.stack(
         [ER.real, ER.imag, EI.real, EI.imag, K_.real, K_.imag], axis=-1
     )
@@ -69,8 +71,10 @@ def update_cno(cno_model, inputs, targets, config, optimizer):
 def train_cno_model(config):
     # prepare data
     data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
-    EI = jnp.load("dataset/EI.npy")
-
+    EI = jnp.load("e_forward.npy")
+    EI = EI.reshape(88, 88)
+    
+    
 
     # create model
     rngs = nnx.Rngs(config["random_seed"])
@@ -103,7 +107,7 @@ def train_cno_model(config):
         batch_count = 0
 
         for ER, ET in data_loader():
-            inputs, targets = preprocess_batch(ER, EI, config, ET)
+            inputs, targets = nnx.vmap(preprocess_batch, in_axes=(0, None, None, 0))(ER, EI, config["K0"], ET)
             loss = update_cno(model, inputs, targets, config, optimizer)
             epoch_loss += float(loss)
             batch_count += 1
@@ -113,31 +117,31 @@ def train_cno_model(config):
         # Optionally, update tqdm bar with loss
         # tqdm.set_postfix({"loss": avg_loss})
 
-    
 
 if __name__ == "__main__":
     # Example configuration
     config = {
         "data_folder": "dataset/",
-        "batch_size": 16,
+        "batch_size": 88,
         "K0": 2 * jnp.pi / 0.3,
-        "dx": 0.01,
-        "dy": 0.01,
+        "dx": 0.0375,
+        "dy": 0.0375,
         "fdx_accuracy": 2,
         "physics_loss_weight": 0.3,
-        "encoder_in_channels": [34, 64, 128],
+        "encoder_in_channels": [32, 64, 128],
         "encoder_out_channels": [64, 128, 256],
-        "encoder_in_size": [64, 32, 16],
-        "encoder_out_size": [32, 16, 8],
-        "decoder_in_channels": [256, 64, 16, 8],
-        "decoder_out_channels": [64, 16, 8, 2],
-        "decoder_in_size": [8, 16, 32, 64],
-        "decoder_out_size": [16, 32, 64, 128],
-        "lp_latent_dim": [34, 2],
-        "lp_in_channels": [34, 2],
-        "lp_out_channels": [34, 2],
-        "lp_in_size": [64, 128],
-        "lp_out_size": [64, 128],
+        "encoder_in_size": [88, 44, 22],
+        "encoder_out_size": [44, 22, 11],
+        "decoder_in_channels": [256, 128, 64, 32],
+        "decoder_out_channels": [128, 64, 32, 2],
+        "decoder_in_size": [11, 22, 44, 88],
+        "decoder_out_size": [22, 44, 88, 88],
+
+        "lp_latent_dim": [256, 256],
+        "lp_in_channels": [6, 2],
+        "lp_out_channels": [32, 2],
+        "lp_in_size": [88, 88],
+        "lp_out_size": [88, 88],
         "activation": nnx.leaky_relu,
         "use_bn": True,
         "num_residual_blocks": 4,
