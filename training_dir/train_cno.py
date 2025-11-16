@@ -15,9 +15,20 @@ def preprocess_batch(ER, EI, k0, ET):
     # print("EI shape is", EI.shape)
     # print("ER shape is", ER.shape)
     # print("ET shape is", ET.shape)
-    K_ = k0 * jnp.sqrt(ER)
+    K_square = (k0**2) * ER
+    # Check for NaN or infinite values in K_ (JIT-compatible)
+    def print_nan_inf(_):
+        jax.debug.print("K_ contains NaN or infinite values.")
+        return None
+
+    def do_nothing(_):
+        return None
+
+    has_nan_inf = jnp.any(jnp.isnan(ER)) | jnp.any(jnp.isinf(ER))
+    jax.lax.cond(has_nan_inf, print_nan_inf, do_nothing, operand=None)
+
     input_batch = jnp.stack(
-        [ER.real, ER.imag, EI.real, EI.imag, K_.real, K_.imag], axis=-1
+        [ER.real, ER.imag, EI.real, EI.imag, K_square.real, K_square.imag], axis=-1
     )
     output_batch = jnp.stack([ET.real, ET.imag], axis=-1)
     return input_batch, output_batch
