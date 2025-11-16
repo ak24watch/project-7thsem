@@ -1,5 +1,5 @@
 import optax
-
+import jax
 import jax.numpy as jnp
 import flax.nnx as nnx
 from dataLoader.make_data import prepare_dataloader
@@ -11,9 +11,9 @@ import finitediffx as fdx
 
 
 def preprocess_batch(ER, EI, k0, ET):
-    print("EI shape is", EI.shape)
-    print("ER shape is", ER.shape)
-    print("ET shape is", ET.shape)
+    # print("EI shape is", EI.shape)
+    # print("ER shape is", ER.shape)
+    # print("ET shape is", ET.shape)
     K_ = k0 * jnp.sqrt(ER)
     input_batch = jnp.stack(
         [ER.real, ER.imag, EI.real, EI.imag, K_.real, K_.imag], axis=-1
@@ -39,11 +39,12 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     ER = inputs[..., 0] + 1j * inputs[..., 1]
     ES_real = ET_output_real - EI_real
     ES_imag = ET_output_imag - EI_imag
+    lap_fn = partial(fdx.laplacian, step_size=(dx, dy), accuracy=fdx_accuracy)
 
-    laplcian_ES_real = fdx.laplacian(ES_real, step_size=(dx, dy), accuracy=fdx_accuracy)
-    laplcian_ES_imag = fdx.laplacian(ES_imag, step_size=(dx, dy), accuracy=fdx_accuracy)
-
-    laplacian_ES = laplcian_ES_real + 1j * laplcian_ES_imag
+    laplacian_ES_real = jax.vmap(lap_fn, in_axes=0)(ES_real)
+    laplacian_ES_imag = jax.vmap(lap_fn, in_axes=0)(ES_imag)
+   
+    laplacian_ES = laplacian_ES_real + 1j * laplacian_ES_imag
 
     ES = ES_real + 1j * ES_imag
     ET = ET_output_real + 1j * ET_output_imag
@@ -56,7 +57,7 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     return total_loss
 
 
-@nnx.jit
+@nnx.jit(static_argnames=["dx", "dy", "fdx_accuracy", "k0"])
 def update_cno(cno_model, inputs, targets, dx, dy, fdx_accuracy, k0, optimizer):
     loss, grads = nnx.value_and_grad(compute_loss)(
         cno_model,

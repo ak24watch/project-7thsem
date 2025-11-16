@@ -85,7 +85,7 @@ class CNO_2D(nnx.Module):
             latent_channels=lp_latent_channels[0],
             out_channels=lp_out_channels[0],
             in_size=lp_in_size[0],
-            out_size=lp_out_channels[0],
+            out_size=lp_out_size[0],
             rngs=rngs,
             use_bn=use_bn,
             kernel_size=kernel_size,
@@ -93,7 +93,7 @@ class CNO_2D(nnx.Module):
         )
 
         self.project = LiftProjectBlock(
-            in_channels=lp_out_channels[-1],
+            in_channels=lp_in_channels[-1],
             latent_channels=lp_latent_channels[-1],
             out_channels=lp_out_channels[-1],
             in_size=lp_in_size[-1],

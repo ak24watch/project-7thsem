@@ -40,9 +40,9 @@ def load_full_dataset(folder):
     ER = jnp.array(ER_list)
     ET = jnp.array(ET_list)
 
-    print("Loaded dataset:")
-    print("ER shape:", ER.shape)
-    print("ET shape:", ET.shape)
+    # print("Loaded dataset:")
+    # print("ER shape:", ER.shape)
+    # print("ET shape:", ET.shape)
 
     return ER, ET
 
