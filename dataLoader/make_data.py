@@ -36,9 +36,11 @@ def load_full_dataset(folder):
 
         # Check for NaN or Inf values in loaded arrays
         if np.isnan(er).any() or np.isinf(er).any():
-            print(f"Warning: er_{i}.npy contains NaN or Inf values!")
+            print(f"Warning: er_{i}.npy contains NaN or Inf values! Skipping.")
+            continue
         if np.isnan(et).any() or np.isinf(et).any():
-            print(f"Warning: Et_{i}.npy contains NaN or Inf values!")
+            print(f"Warning: Et_{i}.npy contains NaN or Inf values! Skipping.")
+            continue
 
         ER_list.append(er)
         ET_list.append(et)
@@ -68,8 +70,8 @@ def create_dataloader(ER, ET, batch_size, shuffle=True):
     # Check for NaNs or Infs in ER and ET
     if jnp.isnan(ER).any() or jnp.isinf(ER).any():
         print("Warning: ER contains NaN or Inf values!")
-    # if jnp.isnan(ET).any() or jnp.isinf(ET).any():
-    #     print("Warning: ET contains NaN or Inf values!")
+    if jnp.isnan(ET).any() or jnp.isinf(ET).any():
+        print("Warning: ET contains NaN or Inf values!")
 
     def dataloader():
         idx = np.arange(N)
