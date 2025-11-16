@@ -137,6 +137,19 @@ epy = [
 ]
 
 [[package]]
+name = "finitediffx"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jax" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/59/7d/24398c0b011bc473a763c830e757d270f14327e64cf8ac27313a57e84f0a/finitediffx-0.1.0.tar.gz", hash = "sha256:52d9e67e551f5cad2b555ddf0ef84ab3f61011172b30b738a07c4776e6f3afbc", size = 20007, upload-time = "2023-07-27T14:07:10.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/d3/818f9d6ca330f4aa78e618f24dac8a79c5d0825b00e9927c461a23539bb4/finitediffx-0.1.0-py3-none-any.whl", hash = "sha256:0b4a900453d8c7317f5e6668e47371cfe27020f075dd9890182561ab19e11572", size = 17714, upload-time = "2023-07-27T14:07:08.806Z" },
+]
+
+[[package]]
 name = "flax"
 version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
@@ -894,6 +907,7 @@ name = "project"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "finitediffx" },
     { name = "flax" },
     { name = "jax", extra = ["cuda12"] },
     { name = "matplotlib" },
@@ -908,6 +922,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "finitediffx", specifier = ">=0.1.0" },
     { name = "flax", specifier = ">=0.12.0" },
     { name = "jax", extras = ["cuda12"], specifier = ">=0.8.0" },
     { name = "matplotlib", specifier = ">=3.10.7" },

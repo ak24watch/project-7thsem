@@ -4,7 +4,7 @@ import numpy as np
 import jax.numpy as jnp
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
-
+import plotly.io as pio
 
 def load_full_dataset(folder):
     er_pattern = re.compile(r"er_(\d+)\.npy$")
@@ -111,12 +111,44 @@ def plot_sample(ER, ET, sample_idx=0):
     )
     fig.show(renderer="browser")
 
+def plot_e_forward(e_forward):
+    # Reshape to (88, 88)
+    e_forward_reshaped = e_forward.reshape(88, 88)
+    # Create subplot figure
+    fig = make_subplots(
+        rows=1, cols=2, subplot_titles=["e_forward Real", "e_forward Imag"]
+    )
+    # Add real part (no colorbar)
+    fig.add_trace(
+        go.Heatmap(z=jnp.real(e_forward_reshaped), showscale=False), row=1, col=1
+    )
+    # Add imaginary part (colorbar shown)
+    fig.add_trace(
+        go.Heatmap(
+            z=jnp.imag(e_forward_reshaped), colorbar=dict(title="Value"), showscale=True
+        ),
+        row=1,
+        col=2,
+    )
+    fig.update_layout(
+        title_text="e_forward Real and Imaginary Parts", width=900, height=400
+    )
+    pio.show(fig, renderer="browser")
 
-ER, ET = load_full_dataset("dataset")
 
-loader = create_dataloader(ER, ET, batch_size=32)
+def prepare_dataloader(folder, batch_size):
+    ER, ET = load_full_dataset(folder)
+    dataloader = create_dataloader(ER, ET, batch_size)
+    return dataloader
 
-fb_ER, fb_ET = next(iter(loader()))  # Example of getting the first batch
 
-# Plot one sample from ER and ET (first sample in batch)
-plot_sample(fb_ER, fb_ET, sample_idx=0)
+if __name__ == "__main__":
+    # Example usage
+    ER, ET = load_full_dataset("dataset")
+
+    loader = create_dataloader(ER, ET, batch_size=32)
+
+    fb_ER, fb_ET = next(iter(loader()))  # Example of getting the first batch
+
+    # Plot one sample from ER and ET (first sample in batch)
+    plot_sample(fb_ER, fb_ET, sample_idx=0)
