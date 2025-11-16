@@ -7,11 +7,11 @@ class Resnet(nnx.Module):
     def __init__(
         self,
         channels,
-        size=None,
+        size,
+        us_bn,
+        rngs,
+        activation,
         num_blocks=4,
-        us_bn=False,
-        rngs=None,
-        activation=nnx.leaky_relu,
         kernel_size=3,
     ):
         @nnx.split_rngs(splits=num_blocks)
@@ -23,7 +23,7 @@ class Resnet(nnx.Module):
                 use_bn=us_bn,
                 rngs=rngs,
                 kernel_size=kernel_size,
-                activation=activation,
+                activation=activation, # class not function
             )
 
         self.resnet = create_resnet_block(rngs)
@@ -45,11 +45,11 @@ class EncoderBlock(nnx.Module):
         self,
         in_channels,
         out_channels,
-        in_size=None,
-        out_size=None,
-        use_bn=True,
-        rngs=None,
-        activation=nnx.leaky_relu,
+        in_size,
+        out_size,
+        use_bn,
+        rngs,
+        activation,
         kernel_size=3,
         num_residual_blocks=4,
     ):
@@ -60,7 +60,7 @@ class EncoderBlock(nnx.Module):
             out_size=out_size,
             use_bn=use_bn,
             rngs=rngs,
-            activation=activation,
+            activation=activation, # class not function
             kernel_size=kernel_size,
         )
 
@@ -81,7 +81,7 @@ class EncoderBlock(nnx.Module):
             out_size=out_size,
             use_bn=use_bn,
             rngs=rngs,
-            activation=activation,
+            activation=activation, # class not function
             kernel_size=kernel_size,
         )
 
@@ -97,11 +97,11 @@ class DecoderBlock(nnx.Module):
         self,
         in_channels,
         out_channels,
-        in_size=None,
-        out_size=None,
-        use_bn=True,
-        rngs=None,
-        activation=nnx.leaky_relu,
+        in_size,
+        out_size,
+        use_bn,
+        rngs,
+        activation,
         kernel_size=3,
         num_residual_blocks=4,
     ):
@@ -112,7 +112,7 @@ class DecoderBlock(nnx.Module):
             out_size=out_size,
             use_bn=use_bn,
             rngs=rngs,
-            activation=activation,
+            activation=activation, # class not function
             kernel_size=kernel_size,
         )
 
@@ -133,7 +133,7 @@ class DecoderBlock(nnx.Module):
             out_size=out_size,
             use_bn=use_bn,
             rngs=rngs,
-            activation=activation,
+            activation=activation, # class not function
             kernel_size=kernel_size,
         )
 

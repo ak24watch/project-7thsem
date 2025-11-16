@@ -36,4 +36,12 @@ class ActivationFilter(nnx.Module):
 # in_size = 32
 # out_size = 64
 # resized_x = ActivationFilter(in_size, out_size)(x)
-# print("Resized shape:", resized_x.shape)  # Should be (1, 32, 64, 3)
+# print("Resized shape:", resized_x.shape)  # Should be (1, 64, 64, 3)
+if __name__ == "__main__":
+    # Example usage
+    import jax.numpy as jnp
+    in_size = 64
+    out_size = 88
+    x = jnp.ones((2, in_size, in_size, 34))  # Example input
+    resized_x = ActivationFilter(in_size, out_size)(x)
+    print("Resized shape:", resized_x.shape)  # Should be (2, 88, 88, 34)

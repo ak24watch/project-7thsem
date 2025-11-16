@@ -8,11 +8,11 @@ class CNOBlock(nnx.Module):
         in_channels,
         out_channels,
         activation, # class not function
-        rngs: nnx.Rngs = None,
-        use_bn=True,
+        rngs: nnx.Rngs ,
+        in_size,
+        out_size,
+        use_bn,
         kernel_size=3,
-        in_size=None,
-        out_size=None,
     ):
         pad = (kernel_size - 1) // 2
         
@@ -48,28 +48,29 @@ class LiftProjectBlock(nnx.Module):
     def __init__(
         self,
         in_channels,
-        latent_dim,
+        latent_channels,
         out_channels,
         activation,
-        in_size=None,
-        out_size=None,
-        rngs=None,
+        in_size,
+        out_size,
+        rngs,
+        use_bn,
         kernel_size=3,
     ):
         pad = (kernel_size - 1) // 2
 
         self._inter_cno_block = CNOBlock(
             in_channels=in_channels,
-            out_channels=latent_dim,
-            use_bn=True,
-            activation=activation,
+            out_channels=latent_channels,
+            use_bn=use_bn,
+            activation=activation, # class not function
             rngs=rngs,
             in_size=in_size,
             out_size=out_size,
             kernel_size=kernel_size,
         )
         self.conv = nnx.Conv(
-            in_features=latent_dim,
+            in_features=latent_channels,
             out_features=out_channels,
             kernel_size=kernel_size,
             padding=pad,
@@ -88,9 +89,9 @@ class ResidualBlock(nnx.Module):
         self,
         channels,
         activation,
-        size=None,
-        use_bn=True,
-        rngs=None,
+        size,
+        rngs,
+        use_bn,
         kernel_size=3,
     ):
         pad = (kernel_size - 1) // 2
@@ -122,7 +123,7 @@ class ResidualBlock(nnx.Module):
             self.bn1 = jax.nn.identity
             self.bn2 = jax.nn.identity
 
-        self.activation = activation(size, size)  # size used in activation function
+        self.activation = activation(size, size)  # size is used in activation ``class``
 
     def __call__(self, x):
         residual = x
