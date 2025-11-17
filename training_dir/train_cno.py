@@ -12,23 +12,12 @@ import finitediffx as fdx
 
 
 def preprocess_batch(ER, EI, k0, ET):
-    # print("EI shape is", EI.shape)
-    # print("ER shape is", ER.shape)
-    # print("ET shape is", ET.shape)
-    K_square = (k0**2) * ER
-    # Check for NaN or infinite values in K_ (JIT-compatible)
-    def print_nan_inf(_):
-        jax.debug.print("K_ contains NaN or infinite values.")
-        return None
+  
+    K_ = k0* jnp.sqrt(ER)
 
-    def do_nothing(_):
-        return None
-
-    has_nan_inf = jnp.any(jnp.isnan(ER)) | jnp.any(jnp.isinf(ER))
-    jax.lax.cond(has_nan_inf, print_nan_inf, do_nothing, operand=None)
 
     input_batch = jnp.stack(
-        [ER.real, ER.imag, EI.real, EI.imag, K_square.real, K_square.imag], axis=-1
+        [ER.real, ER.imag, EI.real, EI.imag, K_.real, K_.imag], axis=-1
     )
     output_batch = jnp.stack([ET.real, ET.imag], axis=-1)
     return input_batch, output_batch
@@ -90,6 +79,9 @@ def train_cno_model(config):
     data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
     EI = jnp.load("e_forward.npy")
     EI = EI.reshape(88, 88)
+     # check EI for NaN or infinite values
+    if jnp.any(jnp.isnan(EI)) or jnp.any(jnp.isinf(EI)):
+        print("EI contains NaN or infinite values.")
 
     # create model
     rngs = nnx.Rngs(config["random_seed"])
@@ -118,29 +110,39 @@ def train_cno_model(config):
     optimizer = nnx.Optimizer(model, optax.adam(config["learning_rate"]), wrt=nnx.Param)
 
     # training loop
-    for epoch in tqdm(range(config["num_epochs"]), desc="Training Epochs"):
-        epoch_loss = 0
-        batch_count = 0
+    with tqdm(total=config["num_epochs"], desc="Training Epochs") as pbar:
+        for epoch in range(config["num_epochs"]):
+            epoch_loss = 0
+            batch_count = 0
 
-        for ER, ET in data_loader():
-            inputs, targets = nnx.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
-                ER, EI, config["K0"], ET
-            )
-            loss = update_cno(
-                model,
-                inputs,
-                targets,
-                config["dx"],
-                config["dy"],
-                config["fdx_accuracy"],
-                config["K0"],
-                optimizer,
-            )
-            epoch_loss += float(loss)
-            batch_count += 1
+            for ER, ET in data_loader():
+                # check ER for NaN or infinite values
+                if jnp.any(jnp.isnan(ER)) or jnp.any(jnp.isinf(ER)):
+                    print("ER contains NaN or infinite values.")
 
-        avg_loss = epoch_loss / batch_count if batch_count > 0 else 0
-        tqdm.write(f"Epoch {epoch}, Loss: {avg_loss:.6f}")
+                # check ET for NaN or infinite values
+                if jnp.any(jnp.isnan(ET)) or jnp.any(jnp.isinf(ET)):
+                    print("ET contains NaN or infinite values.")
+
+                inputs, targets = nnx.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
+                    ER, EI, config["K0"], ET
+                )
+                loss = update_cno(
+                    model,
+                    inputs,
+                    targets,
+                    config["dx"],
+                    config["dy"],
+                    config["fdx_accuracy"],
+                    config["K0"],
+                    optimizer,
+                )
+                epoch_loss += float(loss)
+                batch_count += 1
+
+            avg_loss = epoch_loss / batch_count if batch_count > 0 else 0
+            pbar.set_postfix({"loss": avg_loss})
+            pbar.update(1)
         # Optionally, update tqdm bar with loss
         # tqdm.set_postfix({"loss": avg_loss})
 
