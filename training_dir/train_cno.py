@@ -6,8 +6,7 @@ from dataLoader.make_data import prepare_dataloader
 from model_dir.Cno_2d_model import CNO_2D, ActivationFilter
 from functools import partial
 from tqdm import tqdm
-import flax.serialization
-import msgpack
+import orbax.checkpoint as ocp
 import os
 
 
@@ -32,8 +31,8 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     ET_target_imag = targets[..., 1]
     ET_output_real = predicted[..., 0]
     ET_output_imag = predicted[..., 1]
-    loss_real = jnp.mean((ET_output_real.ravel() - ET_target_real.ravel()) ** 2)
-    loss_imag = jnp.mean((ET_output_imag.ravel() - ET_target_imag.ravel()) ** 2)
+    loss_real = jnp.mean((ET_output_real - ET_target_real) ** 2)
+    loss_imag = jnp.mean((ET_output_imag - ET_target_imag) ** 2)
     data_loss = loss_real + loss_imag
 
     # # physics loss
@@ -105,15 +104,12 @@ def build_cno_model(config, rngs):
 
 def save_nnx_model(model, save_path: str):
     """
-    Serialize and save an NNX model state to disk using flax.serialization.
+    Serialize and save an NNX model state to disk using orbax.
     """
     state = nnx.state(model)
-    payload = flax.serialization.to_bytes(state)
-    dirpath = os.path.dirname(save_path)
-    if dirpath:
-        os.makedirs(dirpath, exist_ok=True)
-    with open(save_path, "wb") as f:
-        f.write(payload)
+    checkpointer = ocp.PyTreeCheckpointer()
+    abs_save_path = os.path.abspath(save_path)
+    checkpointer.save(abs_save_path, state, force=True)
 
 
 def train_cno_model(config):
@@ -124,8 +120,7 @@ def train_cno_model(config):
      # check EI for NaN or infinite values
     if jnp.any(jnp.isnan(EI)) or jnp.any(jnp.isinf(EI)):
         print("EI contains NaN or infinite values.")
-    if jnp.any(jnp.isnan(ET)) or jnp.any(jnp.isinf(ET)):
-        print("ET contains NaN or infinite values.")
+   
 
     # create model
     rngs = nnx.Rngs(config["random_seed"])
@@ -177,16 +172,13 @@ def train_cno_model(config):
     return model
 
 
-if __name__ == "__main__":
-    # Example configuration
+def get_config():
     frequency = 400e6  # 400 MHz
     c0 = 3e8  # Speed of light in m/s
-    wavelength = c0 / frequency  # Wavelength in meters
-    print("wavelength is", wavelength)
-    print("delta is ", wavelength / 20)
-    config = {
+    wavelength = c0 / frequency
+    return {
         "data_folder": "dataset/",
-        "batch_size": 32,
+        "batch_size": 40,
         "K0": 2 * jnp.pi / wavelength,
         "dx": wavelength / 20,
         "dy": wavelength / 20,
@@ -203,23 +195,27 @@ if __name__ == "__main__":
         "lp_latent_channels": [
             16,
             16,
-        ],  # comes in b/w lp_in_channels and lp_out_channels
-        "lp_in_channels": [6, 32],  # may be 8 in_channels  for lift if added something
+        ],
+        "lp_in_channels": [6, 32],
         "lp_out_channels": [32, 2],
-        "lp_in_size": [32, 32],  # change lp
-        "lp_out_size": [32, 32],  # change lp_out_size of lift to 176  afterwards
-        "activation": nnx.leaky_relu,
+        "lp_in_size": [32, 32],
+        "lp_out_size": [32, 32],
+        "activation": nnx.swish,
         "use_bn": True,
         "num_residual_blocks": 4,
         "learning_rate": 1e-3,
         "num_epochs": 100,
         "random_seed": 42,
         "kernel_size": 3,
-        # new: where to save the trained model
-        "save_path": "checkpoints/cno_2d.msgpack",
+        "save_path": "checkpoints/cno_2d/",
+        "wavelength": wavelength,
     }
-   
 
+
+if __name__ == "__main__":
+    config = get_config()
+    print("wavelength is", config["wavelength"])
+   
     model = train_cno_model(config)
     # Example: load the model later (or immediately) from disk
     # from check_model import load_cno_model
