@@ -65,8 +65,8 @@ def load_full_dataset(folder):
 def create_dataloader(ER, ET, batch_size, shuffle=True):
     N = ER.shape[0]
     print("shape of ER:", ER.shape)
-    ER = ER.reshape(N, 88, 88)
-    ET = ET.reshape(N, 88, 88)
+    ER = ER.reshape(N, 32, 32)
+    ET = ET.reshape(N, 32, 32)
     # Check for NaNs or Infs in ER and ET
     if jnp.isnan(ER).any() or jnp.isinf(ER).any():
         print("Warning: ER contains NaN or Inf values!")
@@ -86,9 +86,9 @@ def create_dataloader(ER, ET, batch_size, shuffle=True):
 
 
 def plot_sample(ER, ET, sample_idx=0):
-    # Select sample and reshape to 88x88
-    er_sample = ER[sample_idx].reshape(88, 88)
-    et_sample = ET[sample_idx].reshape(88, 88)
+    # Select sample and reshape to 32x32
+    er_sample = ER[sample_idx].reshape(32, 32)
+    et_sample = ET[sample_idx].reshape(32, 32)
 
     fig = make_subplots(
         rows=2,
@@ -135,8 +135,8 @@ def plot_sample(ER, ET, sample_idx=0):
     fig.show(renderer="browser")
 
 def plot_e_forward(e_forward):
-    # Reshape to (88, 88)
-    e_forward_reshaped = e_forward.reshape(88, 88)
+    # Reshape to (32, 32)
+    e_forward_reshaped = e_forward.reshape(32, 32)
     # Create subplot figure
     fig = make_subplots(
         rows=1, cols=2, subplot_titles=["e_forward Real", "e_forward Imag"]

@@ -6,7 +6,10 @@ from dataLoader.make_data import prepare_dataloader
 from model_dir.Cno_2d_model import CNO_2D, ActivationFilter
 from functools import partial
 from tqdm import tqdm
-# jax.config.update("jax_platform_name", "cpu")
+import flax.serialization
+import msgpack
+import os
+
 
 import finitediffx as fdx
 
@@ -74,18 +77,11 @@ def update_cno(cno_model, inputs, targets, dx, dy, fdx_accuracy, k0, optimizer):
     return loss
 
 
-def train_cno_model(config):
-    # prepare data
-    data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
-    EI = jnp.load("e_forward.npy")
-    EI = EI.reshape(88, 88)
-     # check EI for NaN or infinite values
-    if jnp.any(jnp.isnan(EI)) or jnp.any(jnp.isinf(EI)):
-        print("EI contains NaN or infinite values.")
-
-    # create model
-    rngs = nnx.Rngs(config["random_seed"])
-    model = CNO_2D(
+def build_cno_model(config, rngs):
+    """
+    Create the CNO_2D model from config and rngs. Reused for training and loading.
+    """
+    return CNO_2D(
         encoder_in_channels=config["encoder_in_channels"],
         encoder_out_channels=config["encoder_out_channels"],
         encoder_in_size=config["encoder_in_size"],
@@ -105,6 +101,35 @@ def train_cno_model(config):
         rngs=rngs,
         kernel_size=config["kernel_size"],
     )
+
+
+def save_nnx_model(model, save_path: str):
+    """
+    Serialize and save an NNX model state to disk using flax.serialization.
+    """
+    state = nnx.state(model)
+    payload = flax.serialization.to_bytes(state)
+    dirpath = os.path.dirname(save_path)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+    with open(save_path, "wb") as f:
+        f.write(payload)
+
+
+def train_cno_model(config):
+    # prepare data
+    data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
+    EI = jnp.load("EI.npy")
+    EI = EI.reshape(32, 32)
+     # check EI for NaN or infinite values
+    if jnp.any(jnp.isnan(EI)) or jnp.any(jnp.isinf(EI)):
+        print("EI contains NaN or infinite values.")
+    if jnp.any(jnp.isnan(ET)) or jnp.any(jnp.isinf(ET)):
+        print("ET contains NaN or infinite values.")
+
+    # create model
+    rngs = nnx.Rngs(config["random_seed"])
+    model = build_cno_model(config, rngs)
 
     # create optimizer
     optimizer = nnx.Optimizer(model, optax.adam(config["learning_rate"]), wrt=nnx.Param)
@@ -145,6 +170,11 @@ def train_cno_model(config):
             pbar.update(1)
         # Optionally, update tqdm bar with loss
         # tqdm.set_postfix({"loss": avg_loss})
+    # save after training (optional)
+    save_path = config.get("save_path")
+    if save_path:
+        save_nnx_model(model, save_path)
+    return model
 
 
 if __name__ == "__main__":
@@ -156,7 +186,7 @@ if __name__ == "__main__":
     print("delta is ", wavelength / 20)
     config = {
         "data_folder": "dataset/",
-        "batch_size": 16,
+        "batch_size": 32,
         "K0": 2 * jnp.pi / wavelength,
         "dx": wavelength / 20,
         "dy": wavelength / 20,
@@ -164,20 +194,20 @@ if __name__ == "__main__":
         "physics_loss_weight": 0.3,
         "encoder_in_channels": [32, 64, 128],
         "encoder_out_channels": [64, 128, 256],
-        "encoder_in_size": [88, 44, 22],
-        "encoder_out_size": [44, 22, 11],
+        "encoder_in_size": [32, 16, 8],
+        "encoder_out_size": [16, 8, 4],
         "decoder_in_channels": [256, 128, 64],
         "decoder_out_channels": [128, 64, 32],
-        "decoder_in_size": [11, 22, 44],
-        "decoder_out_size": [22, 44, 88],
+        "decoder_in_size": [8, 16, 32],
+        "decoder_out_size": [16, 32, 64],
         "lp_latent_channels": [
             16,
             16,
         ],  # comes in b/w lp_in_channels and lp_out_channels
         "lp_in_channels": [6, 32],  # may be 8 in_channels  for lift if added something
         "lp_out_channels": [32, 2],
-        "lp_in_size": [88, 88],  # change lp
-        "lp_out_size": [88, 88],  # change lp_out_size of lift to 176  afterwards
+        "lp_in_size": [32, 32],  # change lp
+        "lp_out_size": [32, 32],  # change lp_out_size of lift to 176  afterwards
         "activation": nnx.leaky_relu,
         "use_bn": True,
         "num_residual_blocks": 4,
@@ -185,7 +215,13 @@ if __name__ == "__main__":
         "num_epochs": 100,
         "random_seed": 42,
         "kernel_size": 3,
+        # new: where to save the trained model
+        "save_path": "checkpoints/cno_2d.msgpack",
     }
    
 
-    train_cno_model(config)
+    model = train_cno_model(config)
+    # Example: load the model later (or immediately) from disk
+    # from check_model import load_cno_model
+    # loaded_model = load_cno_model(config, config["save_path"])
+
