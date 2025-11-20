@@ -9,6 +9,7 @@ dependencies = [
     "finitediffx>=0.1.0",
     "flax>=0.12.0",
     "jax[cuda12]>=0.8.0",
+    "kaleido>=1.2.0",
     "matplotlib>=3.10.7",
     "optax>=0.2.6",
     "plotly>=6.4.0",
