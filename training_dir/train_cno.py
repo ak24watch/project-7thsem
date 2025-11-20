@@ -193,8 +193,8 @@ def get_config():
         "decoder_in_size": [8, 16, 32],
         "decoder_out_size": [16, 32, 64],
         "lp_latent_channels": [
-            16,
-            16,
+            32,
+            32,
         ],
         "lp_in_channels": [6, 32],
         "lp_out_channels": [32, 2],

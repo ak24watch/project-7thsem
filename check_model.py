@@ -70,6 +70,7 @@ if __name__ == "__main__":
     # Example: load the model from the path specified in the training config
     loaded_model = load_cno_model(config, config["save_path"])
     print("Model loaded successfully!")
+    loaded_model.eval()  # Set to evaluation mode
 
     # data_loader = prepare_dataloader("dataset", batch_size=1)
     print("DataLoader prepared successfully")
