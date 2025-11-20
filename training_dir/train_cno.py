@@ -10,7 +10,7 @@ import orbax.checkpoint as ocp
 import os
 
 
-import finitediffx as fdx
+# import finitediffx as fdx  # not used currently; keep commented for potential physics loss
 
 
 def preprocess_batch(ER, EI, k0, ET):
@@ -23,7 +23,7 @@ def preprocess_batch(ER, EI, k0, ET):
     return input_batch, output_batch
 
 
-def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
+def compute_loss(cno_model, targets, inputs):
     predicted = cno_model(inputs)
     ET_target_real = targets[..., 0]
     ET_target_imag = targets[..., 1]
@@ -59,16 +59,26 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     return data_loss
 
 
-@nnx.jit(static_argnames=["dx", "dy", "fdx_accuracy", "k0"])
-def update_cno(cno_model, inputs, targets, dx, dy, fdx_accuracy, k0, optimizer):
+def relative_l2_error(predicted, targets, eps: float = 1e-8):
+    """
+    Compute mean relative L2 error over a batch for 2-channel (real, imag) fields.
+
+    predicted, targets: shape (B, H, W, 2)
+    returns scalar jnp.float32
+    """
+    # Flatten spatial and channel dims per sample
+    num = jnp.sqrt(jnp.sum((predicted - targets) ** 2, axis=(1, 2, 3)))
+    den = jnp.sqrt(jnp.sum((targets) ** 2, axis=(1, 2, 3)))
+    rel = num / (den + eps)
+    return jnp.mean(rel)
+
+
+@nnx.jit
+def update_cno(cno_model, inputs, targets, optimizer):
     loss, grads = nnx.value_and_grad(compute_loss)(
         cno_model,
         targets,
         inputs,
-        dx=dx,
-        dy=dy,
-        fdx_accuracy=fdx_accuracy,
-        k0=k0,
     )
     optimizer.update(cno_model, grads)
     return loss
@@ -117,9 +127,14 @@ def save_nnx_model(model, save_path: str):
     checkpointer.save(abs_save_path, state_host, force=True)
 
 
-def train_cno_model(config):
-    # prepare data
-    data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
+def train_cno_model(config, metrics=None):
+    # prepare data: train/val loaders
+    train_loader, val_loader, sizes = prepare_dataloader(
+        config["data_folder"],
+        config["batch_size"],
+        val_ratio=config["val_ratio"],
+        seed=config["data_seed"],
+    )
     EI = jnp.load("EI.npy")
     EI = EI.reshape(32, 32)
     # check EI for NaN or infinite values
@@ -131,41 +146,83 @@ def train_cno_model(config):
     model = build_cno_model(config, rngs)
 
     # create optimizer
-    optimizer = nnx.Optimizer(model, optax.adam(config["learning_rate"]), wrt=nnx.Param)
+    optimizer = nnx.Optimizer(
+        model, optax.adamw(config["learning_rate"]), wrt=nnx.Param
+    )
 
     # training loop
     with tqdm(total=config["num_epochs"], desc="Training Epochs") as pbar:
         for epoch in range(config["num_epochs"]):
-            epoch_loss = 0
-            batch_count = 0
+            train_epoch_loss = 0.0
+            train_epoch_rel = 0.0
+            train_batches = 0
 
-            for ER, ET in data_loader():
-                # check ER for NaN or infinite values
-                if jnp.any(jnp.isnan(ER)) or jnp.any(jnp.isinf(ER)):
-                    print("ER contains NaN or infinite values.")
+            # Training phase
+            for ER, ET in train_loader():
+                # # check ER for NaN or infinite values
+                # if jnp.any(jnp.isnan(ER)) or jnp.any(jnp.isinf(ER)):
+                #     print("ER contains NaN or infinite values.")
 
-                # check ET for NaN or infinite values
-                if jnp.any(jnp.isnan(ET)) or jnp.any(jnp.isinf(ET)):
-                    print("ET contains NaN or infinite values.")
+                # # check ET for NaN or infinite values
+                # if jnp.any(jnp.isnan(ET)) or jnp.any(jnp.isinf(ET)):
+                #     print("ET contains NaN or infinite values.")
 
                 inputs, targets = nnx.vmap(
                     preprocess_batch, in_axes=(0, None, None, 0)
                 )(ER, EI, config["K0"], ET)
+                model.train()
                 loss = update_cno(
                     model,
                     inputs,
                     targets,
-                    config["dx"],
-                    config["dy"],
-                    config["fdx_accuracy"],
-                    config["K0"],
                     optimizer,
                 )
-                epoch_loss += float(loss)
-                batch_count += 1
+                train_epoch_loss += float(loss)
+                # compute train relative error (no grad)
+                preds = model(inputs)
+                batch_rel = float(relative_l2_error(preds, targets))
+                train_epoch_rel += batch_rel
+                train_batches += 1
 
-            avg_loss = epoch_loss / batch_count if batch_count > 0 else 0
-            pbar.set_postfix({"loss": avg_loss})
+            avg_train_loss = (
+                train_epoch_loss / train_batches if train_batches > 0 else 0.0
+            )
+            avg_train_rel = (
+                train_epoch_rel / train_batches if train_batches > 0 else 0.0
+            )
+
+            # Validation phase
+            val_epoch_loss = 0.0
+            val_epoch_rel = 0.0
+            val_batches = 0
+            for ER, ET in val_loader():
+                inputs, targets = nnx.vmap(
+                    preprocess_batch, in_axes=(0, None, None, 0)
+                )(ER, EI, config["K0"], ET)
+                model.eval()
+                v_loss = float(compute_loss(model, targets, inputs))
+                preds = model(inputs)
+                v_rel = float(relative_l2_error(preds, targets))
+                val_epoch_loss += v_loss
+                val_epoch_rel += v_rel
+                val_batches += 1
+
+            avg_val_loss = val_epoch_loss / val_batches if val_batches > 0 else 0.0
+            avg_val_rel = val_epoch_rel / val_batches if val_batches > 0 else 0.0
+
+            # Track metrics if provided
+            if metrics is not None:
+                metrics.setdefault("avg_train_loss", []).append(avg_train_loss)
+                metrics.setdefault("avg_val_loss", []).append(avg_val_loss)
+                metrics.setdefault("avg_train_relative_error", []).append(avg_train_rel)
+                metrics.setdefault("avg_val_relative_error", []).append(avg_val_rel)
+
+            pbar.set_postfix(
+                {
+                    "train_loss": f"{avg_train_loss:.5f}",
+                    "val_loss": f"{avg_val_loss:.5f}",
+                }
+            )
             pbar.update(1)
         # Optionally, update tqdm bar with loss
         # tqdm.set_postfix({"loss": avg_loss})
@@ -182,12 +239,7 @@ def get_config():
     wavelength = c0 / frequency
     return {
         "data_folder": "dataset/",
-        "batch_size": 40,
-        "K0": 2 * jnp.pi / wavelength,
-        "dx": wavelength / 20,
-        "dy": wavelength / 20,
-        "fdx_accuracy": 10,
-        "physics_loss_weight": 0.3,
+        "batch_size": 80,
         "encoder_in_channels": [32, 64, 128],
         "encoder_out_channels": [64, 128, 256],
         "encoder_in_size": [32, 16, 8],
@@ -206,21 +258,63 @@ def get_config():
         "lp_out_size": [32, 32],
         "activation": nnx.swish,
         "use_bn": True,
-        "num_residual_blocks": 4,
+        "num_residual_blocks": 8,
         "learning_rate": 1e-3,
-        "num_epochs": 3,
+        "num_epochs": 100,
         "random_seed": 42,
+        "data_seed": 432,
+        "val_ratio": 0.2,
         "kernel_size": 3,
         "save_path": "checkpoints/cno_2d/",
+        "metrics_csv": "training_dir/metrics.csv",
         "wavelength": wavelength,
+        "K0": 2 * jnp.pi / wavelength,
     }
 
 
 if __name__ == "__main__":
     config = get_config()
     print("wavelength is", config["wavelength"])
+    metrics = {
+        "avg_train_loss": [],
+        "avg_val_loss": [],
+        "avg_train_relative_error": [],
+        "avg_val_relative_error": [],
+    }
 
-    model = train_cno_model(config)
+    model = train_cno_model(config, metrics=metrics)
+
+    # Optionally save metrics to CSV for external tracking
+    try:
+        import csv
+
+        csv_path = config.get("metrics_csv")
+        if csv_path:
+            os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+            with open(csv_path, mode="w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "epoch",
+                        "avg_train_loss",
+                        "avg_val_loss",
+                        "avg_train_relative_error",
+                        "avg_val_relative_error",
+                    ]
+                )
+                for i in range(len(metrics["avg_train_loss"])):
+                    writer.writerow(
+                        [
+                            i + 1,
+                            metrics["avg_train_loss"][i],
+                            metrics["avg_val_loss"][i],
+                            metrics["avg_train_relative_error"][i],
+                            metrics["avg_val_relative_error"][i],
+                        ]
+                    )
+            print(f"Saved metrics to {csv_path}")
+    except Exception as e:
+        print(f"Could not write metrics CSV: {e}")
     # Example: load the model later (or immediately) from disk
     # from check_model import load_cno_model
     # loaded_model = load_cno_model(config, config["save_path"])

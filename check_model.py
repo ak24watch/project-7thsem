@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 from training_dir.train_cno import get_config
 from training_dir.train_cno import preprocess_batch
+from dataLoader.make_data import prepare_dataloader
 
 
 def plot_complex_fields(output, target, ER, save_path=None):
@@ -69,11 +70,12 @@ if __name__ == "__main__":
     print("Model loaded successfully!")
     loaded_model.eval()  # Set to evaluation mode
 
-    # data_loader = prepare_dataloader("dataset", batch_size=1)
+    data_loader = prepare_dataloader("dataset", batch_size=1)
     print("DataLoader prepared successfully")
-    # ER, ET = next(iter(data_loader()))
-    ET = jnp.load("triangle_ET.npy").reshape(1, 32, 32)
-    ER = jnp.load("traiangle_image.npy").reshape(1, 32, 32)
+    ER, ET = next(iter(data_loader()))
+    ER, ET = next(iter(data_loader()))
+    # ET = jnp.load("triangle_ET.npy").reshape(1, 32, 32)
+    # ER = jnp.load("traiangle_image.npy").reshape(1, 32, 32)
     print("shape of ER and ET:", ER.shape, ET.shape)
     EI = jnp.load("EI.npy").reshape(32, 32)
     print("Data batch and EI loaded successfully")
@@ -93,7 +95,7 @@ if __name__ == "__main__":
     eps_complex = jnp.stack([eps_real, eps_imag], axis=-1)
     print("stacked eps_complex shape:", eps_complex.shape)
 
-    plot_complex_fields(output[0], target[0], eps_complex[0], save_path="test.png")
+    plot_complex_fields(output[0], target[0], eps_complex[0], save_path="copa.png")
     ET_target = target[0, ..., 0] + 1j * target[0, ..., 1]
     ET_predicted = output[0, ..., 0] + 1j * output[0, ..., 1]
     relative_error = jnp.linalg.norm(ET_predicted - ET_target) / jnp.linalg.norm(

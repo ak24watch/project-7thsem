@@ -6,9 +6,10 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 import plotly.io as pio
 
+
 def load_full_dataset(folder):
-    er_pattern = re.compile(r"er_(\d+)\.npy$")
-    et_pattern = re.compile(r"Et_(\d+)\.npy$")
+    er_pattern = re.compile(r"er_(\d+)\.npy$", re.IGNORECASE)
+    et_pattern = re.compile(r"et_(\d+)\.npy$", re.IGNORECASE)
 
     er_files = {}
     et_files = {}
@@ -32,7 +33,6 @@ def load_full_dataset(folder):
     for i in ids:
         er = np.load(os.path.join(folder, er_files[i]))
         et = np.load(os.path.join(folder, et_files[i]))
-
 
         # Check for NaN or Inf values in loaded arrays
         if np.isnan(er).any() or np.isinf(er).any():
@@ -134,6 +134,7 @@ def plot_sample(ER, ET, sample_idx=0):
     )
     fig.show(renderer="browser")
 
+
 def plot_e_forward(e_forward):
     # Reshape to (32, 32)
     e_forward_reshaped = e_forward.reshape(32, 32)
@@ -159,10 +160,56 @@ def plot_e_forward(e_forward):
     pio.show(fig, renderer="browser")
 
 
-def prepare_dataloader(folder, batch_size):
+def split_dataset(ER, ET, val_ratio=0.2, shuffle=True, seed=42):
+    """
+    Split ER, ET into train and validation sets.
+
+    Args:
+        ER: jnp.ndarray of shape (N, 32, 32) or (N, ...)
+        ET: jnp.ndarray of shape (N, 32, 32) or (N, ...)
+        val_ratio: fraction of data to use for validation
+        shuffle: whether to shuffle before split
+        seed: random seed for shuffling
+
+    Returns:
+        (ER_train, ET_train), (ER_val, ET_val)
+    """
+    import numpy as np
+
+    N = ER.shape[0]
+    idx = np.arange(N)
+    if shuffle:
+        rng = np.random.default_rng(seed)
+        rng.shuffle(idx)
+
+    n_val = int(N * val_ratio)
+    val_idx = idx[:n_val]
+    train_idx = idx[n_val:]
+
+    ER_train = ER[train_idx]
+    ET_train = ET[train_idx]
+    ER_val = ER[val_idx]
+    ET_val = ET[val_idx]
+
+    return (ER_train, ET_train), (ER_val, ET_val)
+
+
+def prepare_dataloader(folder, batch_size, val_ratio=0.2, seed=42):
+    """
+    Load the full dataset, split into train/val, and create dataloaders for each.
+
+    Returns:
+        train_loader, val_loader, sizes_dict
+    where sizes_dict = {"train": N_train, "val": N_val}
+    """
     ER, ET = load_full_dataset(folder)
-    dataloader = create_dataloader(ER, ET, batch_size)
-    return dataloader
+    (ER_tr, ET_tr), (ER_va, ET_va) = split_dataset(
+        ER, ET, val_ratio=val_ratio, shuffle=True, seed=seed
+    )
+    train_loader = create_dataloader(ER_tr, ET_tr, batch_size, shuffle=True)
+    val_loader = create_dataloader(ER_va, ET_va, batch_size, shuffle=False)
+    sizes = {"train": int(ER_tr.shape[0]), "val": int(ER_va.shape[0])}
+    return train_loader, val_loader, sizes
 
 
 if __name__ == "__main__":
