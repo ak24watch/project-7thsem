@@ -14,4 +14,4 @@ wheels/
 dataset/
 dataset.zip
 permittivity_8000_88x88_shapes.npz
-checkpoints/
+

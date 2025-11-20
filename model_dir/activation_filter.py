@@ -15,8 +15,8 @@ class ActivationFilter(nnx.Module):
         x = jax.image.resize(
             x,
             shape=(x.shape[0], 2 * self._in_size, 2 * self._in_size, x.shape[-1]),
-            method="bicubic",
-            antialias=True,
+            method="bilinear",
+            antialias=False,
         )
 
         #
@@ -25,8 +25,8 @@ class ActivationFilter(nnx.Module):
         x = jax.image.resize(
             x,
             shape=(x.shape[0], self._out_size, self._out_size, x.shape[-1]),
-            method="bicubic",
-            antialias=True,
+            method="bilinear",
+            antialias=False,
         )
 
         return x

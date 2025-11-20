@@ -16,6 +16,7 @@ import os
 def preprocess_batch(ER, EI, k0, ET):
     K_ = k0 * jnp.sqrt(ER)
 
+
     input_batch = jnp.stack(
         [ER.real, ER.imag, EI.real, EI.imag, K_.real, K_.imag], axis=-1
     )
@@ -58,17 +59,20 @@ def compute_loss(cno_model, targets, inputs):
     # return total_loss
     return data_loss
 
-
+@jax.jit
 def relative_l2_error(predicted, targets, eps: float = 1e-8):
     """
-    Compute mean relative L2 error over a batch for 2-channel (real, imag) fields.
+    Compute mean relative L2 error over a batch for 2-channel (real, imag) fields using the L2 norm for complex arrays.
 
     predicted, targets: shape (B, H, W, 2)
     returns scalar jnp.float32
     """
-    # Flatten spatial and channel dims per sample
-    num = jnp.sqrt(jnp.sum((predicted - targets) ** 2, axis=(1, 2, 3)))
-    den = jnp.sqrt(jnp.sum((targets) ** 2, axis=(1, 2, 3)))
+    # Convert real/imag channels to complex
+    predicted_c = predicted[..., 0] + 1j * predicted[..., 1]
+    targets_c = targets[..., 0] + 1j * targets[..., 1]
+    # Use jnp.linalg.norm for L2 norm calculation
+    num = jnp.linalg.norm(predicted_c - targets_c, axis=(1, 2))
+    den = jnp.linalg.norm(targets_c, axis=(1, 2))
     rel = num / (den + eps)
     return jnp.mean(rel)
 
@@ -157,6 +161,7 @@ def train_cno_model(config, metrics=None):
             train_epoch_rel = 0.0
             train_batches = 0
 
+            model.train()
             # Training phase
             for ER, ET in train_loader():
                 # # check ER for NaN or infinite values
@@ -170,7 +175,7 @@ def train_cno_model(config, metrics=None):
                 inputs, targets = nnx.vmap(
                     preprocess_batch, in_axes=(0, None, None, 0)
                 )(ER, EI, config["K0"], ET)
-                model.train()
+                
                 loss = update_cno(
                     model,
                     inputs,
@@ -195,11 +200,12 @@ def train_cno_model(config, metrics=None):
             val_epoch_loss = 0.0
             val_epoch_rel = 0.0
             val_batches = 0
+            model.eval()
             for ER, ET in val_loader():
                 inputs, targets = nnx.vmap(
                     preprocess_batch, in_axes=(0, None, None, 0)
                 )(ER, EI, config["K0"], ET)
-                model.eval()
+                
                 v_loss = float(compute_loss(model, targets, inputs))
                 preds = model(inputs)
                 v_rel = float(relative_l2_error(preds, targets))
@@ -258,7 +264,7 @@ def get_config():
         "lp_out_size": [32, 32],
         "activation": nnx.swish,
         "use_bn": True,
-        "num_residual_blocks": 8,
+        "num_residual_blocks": 4,
         "learning_rate": 1e-3,
         "num_epochs": 100,
         "random_seed": 42,
