@@ -52,8 +52,8 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
     # ES = ES_real + 1j * ES_imag
     # ET = ET_output_real + 1j * ET_output_imag
 
-    # physics_residual = laplacian_ES + k0**2 * ES + k0**2 * (ER - 1) * ET
-    # physics_loss = jnp.mean(jnp.abs(physics_residual.ravel()) ** 2)
+    # physics_residual = laplacian_ES + k0**2 * ES + k0**2 * ER * ET
+    # physics_loss = jnp.mean(jnp.abs(physics_residual) ** 2)
 
     # total_loss = data_loss + config["physics_loss_weight"] * physics_loss
 
