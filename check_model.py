@@ -2,13 +2,11 @@ import os
 import orbax.checkpoint as ocp
 import flax.nnx as nnx
 from training_dir.train_cno import build_cno_model
-from dataLoader.make_data import prepare_dataloader
 import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
 from training_dir.train_cno import get_config
 from training_dir.train_cno import preprocess_batch
-
 
 
 def plot_complex_fields(output, target, ER, save_path=None):
@@ -57,9 +55,8 @@ def load_cno_model(config: dict, load_path: str):
     abstract_state = nnx.state(model)
 
     checkpointer = ocp.PyTreeCheckpointer()
-    restored_state = checkpointer.restore(
-        abs_load_path, args=ocp.args.PyTreeRestore(abstract_state)
-    )
+    # Restore directly into the abstract template using item=; avoids incorrect args usage.
+    restored_state = checkpointer.restore(abs_load_path, item=abstract_state)
 
     nnx.update(model, restored_state)
     return model
@@ -80,22 +77,26 @@ if __name__ == "__main__":
     print("shape of ER and ET:", ER.shape, ET.shape)
     EI = jnp.load("EI.npy").reshape(32, 32)
     print("Data batch and EI loaded successfully")
-    input, target = jax.vmap(preprocess_batch, in_axes=(0, None, None, 0))(ER, EI, config["K0"], ET)
+    input, target = jax.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
+        ER, EI, config["K0"], ET
+    )
     print("Preprocessing successful")
     print(f"Input shape: {input.shape}, Target shape: {target.shape}")
     # Forward pass through the loaded model
     output = loaded_model(input)
     print("Forward pass successful")
     print(f"Output shape: {output.shape}")
-    
-    eps_real = ER.real 
+
+    eps_real = ER.real
     eps_imag = ER.imag
-    
+
     eps_complex = jnp.stack([eps_real, eps_imag], axis=-1)
     print("stacked eps_complex shape:", eps_complex.shape)
-    
+
     plot_complex_fields(output[0], target[0], eps_complex[0], save_path="test.png")
-    ET_target = target[0,...,0] + 1j * target[0,...,1]
-    ET_predicted = output[0,...,0] + 1j * output[0,...,1]
-    relative_error = jnp.linalg.norm(ET_predicted - ET_target) / jnp.linalg.norm(ET_target) 
+    ET_target = target[0, ..., 0] + 1j * target[0, ..., 1]
+    ET_predicted = output[0, ..., 0] + 1j * output[0, ..., 1]
+    relative_error = jnp.linalg.norm(ET_predicted - ET_target) / jnp.linalg.norm(
+        ET_target
+    )
     print(f"Relative error between output and target: {relative_error:.6f}")

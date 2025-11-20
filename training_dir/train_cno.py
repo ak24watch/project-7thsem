@@ -14,9 +14,7 @@ import finitediffx as fdx
 
 
 def preprocess_batch(ER, EI, k0, ET):
-  
-    K_ = k0* jnp.sqrt(ER)
-
+    K_ = k0 * jnp.sqrt(ER)
 
     input_batch = jnp.stack(
         [ER.real, ER.imag, EI.real, EI.imag, K_.real, K_.imag], axis=-1
@@ -46,7 +44,7 @@ def compute_loss(cno_model, targets, inputs, dx, dy, fdx_accuracy, k0):
 
     # laplacian_ES_real = jax.vmap(lap_fn, in_axes=0)(ES_real)
     # laplacian_ES_imag = jax.vmap(lap_fn, in_axes=0)(ES_imag)
-   
+
     # laplacian_ES = laplacian_ES_real + 1j * laplacian_ES_imag
 
     # ES = ES_real + 1j * ES_imag
@@ -106,10 +104,17 @@ def save_nnx_model(model, save_path: str):
     """
     Serialize and save an NNX model state to disk using orbax.
     """
+    # Collect model state (parameters, batchnorm stats, etc.) as a PyTree of jax.Array leaves.
     state = nnx.state(model)
+    # Convert any jax.Array leaves to host numpy arrays so no sharding reconstruction is needed on restore.
+    state_host = jax.tree_util.tree_map(
+        lambda x: jax.device_get(x) if isinstance(x, (jax.Array, jnp.ndarray)) else x,
+        state,
+    )
     checkpointer = ocp.PyTreeCheckpointer()
     abs_save_path = os.path.abspath(save_path)
-    checkpointer.save(abs_save_path, state, force=True)
+    # Save host materialized state; loader can restore without sharding inference warning.
+    checkpointer.save(abs_save_path, state_host, force=True)
 
 
 def train_cno_model(config):
@@ -117,10 +122,9 @@ def train_cno_model(config):
     data_loader = prepare_dataloader(config["data_folder"], config["batch_size"])
     EI = jnp.load("EI.npy")
     EI = EI.reshape(32, 32)
-     # check EI for NaN or infinite values
+    # check EI for NaN or infinite values
     if jnp.any(jnp.isnan(EI)) or jnp.any(jnp.isinf(EI)):
         print("EI contains NaN or infinite values.")
-   
 
     # create model
     rngs = nnx.Rngs(config["random_seed"])
@@ -144,9 +148,9 @@ def train_cno_model(config):
                 if jnp.any(jnp.isnan(ET)) or jnp.any(jnp.isinf(ET)):
                     print("ET contains NaN or infinite values.")
 
-                inputs, targets = nnx.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
-                    ER, EI, config["K0"], ET
-                )
+                inputs, targets = nnx.vmap(
+                    preprocess_batch, in_axes=(0, None, None, 0)
+                )(ER, EI, config["K0"], ET)
                 loss = update_cno(
                     model,
                     inputs,
@@ -204,7 +208,7 @@ def get_config():
         "use_bn": True,
         "num_residual_blocks": 4,
         "learning_rate": 1e-3,
-        "num_epochs": 100,
+        "num_epochs": 3,
         "random_seed": 42,
         "kernel_size": 3,
         "save_path": "checkpoints/cno_2d/",
@@ -215,9 +219,8 @@ def get_config():
 if __name__ == "__main__":
     config = get_config()
     print("wavelength is", config["wavelength"])
-   
+
     model = train_cno_model(config)
     # Example: load the model later (or immediately) from disk
     # from check_model import load_cno_model
     # loaded_model = load_cno_model(config, config["save_path"])
-
