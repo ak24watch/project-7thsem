@@ -1,18 +1,38 @@
 import os
+import time
 import orbax.checkpoint as ocp
 import flax.nnx as nnx
 from training_dir.train_cno import build_cno_model
 import matplotlib.pyplot as plt
-import plotly.io as pio
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import numpy as np
-from pathlib import Path
 import jax
 import jax.numpy as jnp
 from training_dir.train_cno import get_config
 from training_dir.train_cno import preprocess_batch
-from dataLoader.make_data import prepare_dataloader  # not used here
+from dataLoader.make_data import prepare_dataloader
+import csv
+
+
+def plot_complex_fields(output, target, ER, save_path=None):
+    fig, axs = plt.subplots(3, 4, figsize=(20, 12))
+    fields = [(output, "Output"), (target, "Target"), (ER, "ER")]
+    for i, (field, name) in enumerate(fields):
+        # field shape: (32, 32, 2), where last dim is (real, imag)
+        real = field[..., 0]
+        imag = field[..., 1]
+        complex_field = real + 1j * imag
+        abs_val = jnp.abs(complex_field)
+        phase = jnp.angle(complex_field)
+        axs[i, 0].imshow(real, cmap="viridis")
+        axs[i, 0].set_title(f"{name} Real")
+        axs[i, 1].imshow(imag, cmap="viridis")
+        axs[i, 1].set_title(f"{name} Imaginary")
+        axs[i, 2].imshow(abs_val, cmap="viridis")
+        axs[i, 2].set_title(f"{name} Absolute")
+        axs[i, 3].imshow(phase, cmap="twilight")
+        axs[i, 3].set_title(f"{name} Phase")
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
 
 
 def load_cno_model(config: dict, load_path: str):
@@ -45,112 +65,81 @@ def load_cno_model(config: dict, load_path: str):
     return model
 
 
+def test_model_forward(inputs, model_state):
+    model = nnx.merge(model_graphdef, model_state)
+    model.eval()
+    _ = model(inputs)
+    return model_state
+
+
 if __name__ == "__main__":
     config = get_config()
     # Example: load the model from the path specified in the training config
     loaded_model = load_cno_model(config, config["save_path"])
     print("Model loaded successfully!")
-    loaded_model.eval()  # Set to evaluation mode
+    # loaded_model.eval()  # Set to evaluation mode
 
+    # Prepare dataloader using training data only (no validation)
     train_loader, val_loader, sizes = prepare_dataloader(
-        "dataset", batch_size=1
+        config["data_folder"],
+        batch_size=32000,
+        val_ratio=0.0,
+        seed=config.get("data_seed", 42),
     )
-    print("DataLoader prepared successfully")
-    ER, ET = next(iter(val_loader()))
-    # ET = jnp.load("triangle_ET.npy").reshape(1, 32, 32)
-    # ER = jnp.load("traiangle_image.npy").reshape(1, 32, 32)
+    print(f"DataLoader prepared: sizes={sizes}")
+    # Use the first batch from the train_loader (batch_size=1)
+    ER, ET = next(iter(train_loader()))
     print("shape of ER and ET:", ER.shape, ET.shape)
     EI = jnp.load("EI.npy").reshape(32, 32)
     print("Data batch and EI loaded successfully")
-    input, target = jax.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
+    # Preprocess the batch exactly as in training (vmap over the batch dim)
+    inputs, targets = jax.vmap(preprocess_batch, in_axes=(0, None, None, 0))(
         ER, EI, config["K0"], ET
     )
     print("Preprocessing successful")
-    print(f"Input shape: {input.shape}, Target shape: {target.shape}")
+    print(f"Inputs shape: {inputs.shape}, Targets shape: {targets.shape}")
     # Forward pass through the loaded model
-    output = loaded_model(input)
-    print("Forward pass successful")
-    print(f"Output shape: {output.shape}")
+    time_dict = {}
+    model_graphdef, model_state = nnx.split(loaded_model)
+    # output = loaded_model(input)
+    # Run nnx.scan using batch_size=1. Use dataset size as number of scan steps.
+  
+    for num_sample in range(1, 32000, 100):
+        inputs_subset = inputs[:num_sample, :, :, :]
+        inputs_subset = inputs_subset.reshape(
+            num_sample, 1, inputs.shape[1], inputs.shape[2], inputs.shape[3]
+        )
+        start_time = time.perf_counter()
+        output = nnx.scan(
+            test_model_forward,
+            in_axes=(0, nnx.Carry),
+            out_axes=(nnx.Carry),
+        )(inputs_subset, model_state)
+        output = jax.block_until_ready(output)
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        time_dict[num_sample] = elapsed_time
+        print(
+            f"Time taken for scanning {num_sample} steps: {elapsed_time:.6f} seconds"
+        )
 
-    eps_real = ER.real
-    eps_imag = ER.imag
+    # Write time_dict to metrics.csv
+    metrics_csv_path = "/home/dell/project-7thsem/training_dir/metrics.csv"
+    with open(metrics_csv_path, mode="a", newline="") as csvfile:
+        csv_writer = csv.writer(csvfile)
+        for samples, elapsed_time in time_dict.items():
+            csv_writer.writerow(["samples", samples, "elapsed_time", elapsed_time])
 
-    eps_complex = jnp.stack([eps_real, eps_imag], axis=-1)
-    print("stacked eps_complex shape:", eps_complex.shape)
+    # eps_real = ER.real
+    # eps_imag = ER.imag
 
-    ET_target = target[0, ..., 0] + 1j * target[0, ..., 1]
-    ET_predicted = output[0, ..., 0] + 1j * output[0, ..., 1]
-    relative_error = jnp.linalg.norm(ET_predicted - ET_target) / jnp.linalg.norm(
-        ET_target
-    )
-    print(f"Relative error between output and target: {relative_error:.6f}")
+    # eps_complex = jnp.stack([eps_real, eps_imag], axis=-1)
+    # print("stacked eps_complex shape:", eps_complex.shape)
 
-    fig, axs = plt.subplots(3, 4, figsize=(18, 12))
-    fig.suptitle("Model Evaluation: ER, ET (Target & Predicted)")
-
-    extent = [-1, 1, -1, 1]  # domain from -1 to 1 in both axes
-
-    # ER real
-    im0 = axs[0, 0].imshow(eps_real[0], cmap="viridis", extent=extent)
-    axs[0, 0].set_title("ER Real")
-    plt.colorbar(im0, ax=axs[0, 0])
-
-    # ER imaginary
-    im1 = axs[0, 1].imshow(eps_imag[0], cmap="viridis", extent=extent)
-    axs[0, 1].set_title("ER Imaginary")
-    plt.colorbar(im1, ax=axs[0, 1])
-
-    # ET target real
-    im2 = axs[0, 2].imshow(target[0, ..., 0], cmap="viridis", extent=extent)
-    axs[0, 2].set_title("ET Target Real")
-    plt.colorbar(im2, ax=axs[0, 2])
-
-    # ET target imaginary
-    im3 = axs[0, 3].imshow(target[0, ..., 1], cmap="viridis", extent=extent)
-    axs[0, 3].set_title("ET Target Imaginary")
-    plt.colorbar(im3, ax=axs[0, 3])
-
-    # ET predicted real
-    im4 = axs[1, 0].imshow(output[0, ..., 0], cmap="viridis", extent=extent)
-    axs[1, 0].set_title("ET Predicted Real")
-    plt.colorbar(im4, ax=axs[1, 0])
-
-    # ET predicted imaginary
-    im5 = axs[1, 1].imshow(output[0, ..., 1], cmap="viridis", extent=extent)
-    axs[1, 1].set_title("ET Predicted Imaginary")
-    plt.colorbar(im5, ax=axs[1, 1])
-
-    # ET target absolute
-    im6 = axs[1, 2].imshow(np.abs(ET_target), cmap="magma", extent=extent)
-    axs[1, 2].set_title("ET Target |Abs|")
-    plt.colorbar(im6, ax=axs[1, 2])
-
-    # ET predicted absolute
-    im7 = axs[1, 3].imshow(np.abs(ET_predicted), cmap="magma", extent=extent)
-    axs[1, 3].set_title("ET Predicted |Abs|")
-    plt.colorbar(im7, ax=axs[1, 3])
-
-    # ET target phase
-    im8 = axs[2, 0].imshow(np.angle(ET_target), cmap="twilight", extent=extent)
-    axs[2, 0].set_title("ET Target Phase")
-    plt.colorbar(im8, ax=axs[2, 0])
-
-    # ET predicted phase
-    im9 = axs[2, 1].imshow(np.angle(ET_predicted), cmap="twilight", extent=extent)
-    axs[2, 1].set_title("ET Predicted Phase")
-    plt.colorbar(im9, ax=axs[2, 1])
-
-    # Relative error values
-    rel_err_map = np.abs(ET_predicted - ET_target) / (np.abs(ET_target) + 1e-8)
-    im10 = axs[2, 2].imshow(rel_err_map, cmap="inferno", extent=extent)
-    axs[2, 2].set_title("Relative Error Map")
-    plt.colorbar(im10, ax=axs[2, 2])
-
-    # Relative error percentage plot
-    rel_err_percent = rel_err_map * 100
-    im11 = axs[2, 3].imshow(rel_err_percent, cmap="inferno", extent=extent)
-    axs[2, 3].set_title("Relative Error (%)")
-    plt.colorbar(im11, ax=axs[2, 3])
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.savefig("train_complete.png")
+    # plot_complex_fields(output[0], target[0], eps_complex[0], save_path="test.png")
+    # ET_target = target[0, ..., 0] + 1j * target[0, ..., 1]
+    # ET_predicted = output[0, ..., 0] + 1j * output[0, ..., 1]
+    # relative_error = jnp.linalg.norm(ET_predicted - ET_target) / jnp.linalg.norm(
+    #     ET_target
+    # )
+    # print(f"Relative error between output and target: {relative_error:.6f}")
