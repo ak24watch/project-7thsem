@@ -115,6 +115,7 @@ if __name__ == "__main__":
             in_axes=(0, nnx.Carry),
             out_axes=(nnx.Carry),
         )(inputs_subset, model_state)
+        
         output = jax.block_until_ready(output)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
